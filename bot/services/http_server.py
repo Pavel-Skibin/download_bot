@@ -1,9 +1,11 @@
 import asyncio
 import json
 import hashlib
+import mimetypes
 from pathlib import Path
 from typing import Dict, Optional
 from datetime import datetime, timedelta
+from urllib.parse import quote
 from aiohttp import web
 from bot.utils.config import config
 from bot.utils.logger import BotLogger
@@ -207,11 +209,19 @@ class HTTPServer:
         try:
             file_size_bytes = found_path.stat().st_size
             logger.info(f'Serving file: {file_hash} -> {file_info["name"]} ({file_size_bytes / (1024*1024):.2f} MB)')
-            
+
+            content_type, _ = mimetypes.guess_type(str(found_path))
+            if not content_type:
+                content_type = 'application/octet-stream'
+
             response = web.FileResponse(found_path)
             filename = file_info['name']
-            response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
-            response.headers['Content-Type'] = 'application/octet-stream'
+            safe_ascii = ''.join(ch if ord(ch) < 128 else '_' for ch in filename)
+            quoted_name = quote(filename)
+            response.headers['Content-Disposition'] = (
+                f"attachment; filename=\"{safe_ascii}\"; filename*=UTF-8''{quoted_name}"
+            )
+            response.headers['Content-Type'] = content_type
             response.headers['Content-Length'] = str(file_size_bytes)
             
             return response
