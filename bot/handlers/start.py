@@ -35,7 +35,8 @@ Just send me a link and I'll offer you download options!
 
 /help - Full guide
 /stats - Your statistics
-/history - Download history''')
+/history - Download history
+/movie - Search movies on RuTracker''')
 
 
 @router.message(Command('help'))
@@ -59,6 +60,7 @@ Commands:
 /help - This help
 /stats - Download statistics
 /history [N] - Last N downloads (default 10)
+/movie [title] - Search movie releases on RuTracker
 /cancel - Cancel current operation
 
 Supported formats:

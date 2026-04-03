@@ -10,7 +10,13 @@ class Config:
     TELEGRAM_BOT_TOKEN: str = os.getenv('TELEGRAM_BOT_TOKEN', '')
     ALLOWED_USER_ID: int = int(os.getenv('ALLOWED_USER_ID', '0'))
 
+    RUTRACKER_LOGIN: str = os.getenv('RUTRACKER_LOGIN', '').strip()
+    RUTRACKER_PASSWORD: str = os.getenv('RUTRACKER_PASSWORD', '').strip()
+    RUTRACKER_PROXY: str = os.getenv('RUTRACKER_PROXY', '').strip()
+
     EXTERNAL_URL: str = os.getenv('EXTERNAL_URL', '').strip()
+    AIOTORRENT_STREAM_URL_TEMPLATE: str = os.getenv('AIOTORRENT_STREAM_URL_TEMPLATE', '').strip()
+    AIOTORRENT_HOST: str = os.getenv('AIOTORRENT_HOST', '127.0.0.1').strip()
 
     DOWNLOADS_PATH: str = os.getenv('DOWNLOADS_PATH', './data/downloads')
     DATABASE_PATH: str = os.getenv('DATABASE_PATH', './data/database.db')

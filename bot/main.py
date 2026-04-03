@@ -4,7 +4,7 @@ from aiogram import Dispatcher, Bot, Router
 from aiogram.fsm.storage.memory import MemoryStorage
 from bot.utils.config import config
 from bot.utils.logger import BotLogger
-from bot.handlers import start, download, stats
+from bot.handlers import start, download, stats, movie
 from bot.services.logger import DatabaseLogger
 from bot.services.http_server import init_http_server
 
@@ -30,6 +30,7 @@ async def main() -> None:
     router = Router()
     router.include_router(start.router)
     router.include_router(download.router)
+    router.include_router(movie.router)
     router.include_router(stats.router)
 
     dp.include_router(router)
