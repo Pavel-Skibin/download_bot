@@ -159,7 +159,11 @@ async def process_playlist_downloads(bot, chat_id: int, message_id: int, playlis
 
         track_download_id = f'playlist_{uuid.uuid4().hex}_{index}'
         track_download_dir = file_manager.get_unique_download_dir(user_id, track_download_id)
-        track_metadata = SimpleNamespace(title=track_title, duration=entry.get('duration', 0))
+        track_metadata = SimpleNamespace(
+            title=track_title,
+            duration=entry.get('duration', 0),
+            uploader=entry.get('uploader', 'Unknown')
+        )
 
         task_data = {
             'user_id': user_id,
@@ -203,7 +207,13 @@ async def execute_download(bot, task_data: Dict) -> None:
 
         start_time = time.time()
 
-        filepath = await downloader.download(url, quality_key, download_dir)
+        filepath = await downloader.download(
+            url,
+            quality_key,
+            download_dir,
+            title_hint=getattr(metadata, 'title', None),
+            uploader_hint=getattr(metadata, 'uploader', None),
+        )
         if not filepath:
             await bot.send_message(chat_id, '❌ Download failed.\nCheck the link or try a different quality.')
             await db_logger.log_failed_download(user_id, url, 'Download failed')
@@ -221,7 +231,7 @@ async def execute_download(bot, task_data: Dict) -> None:
         except:
             pass
 
-        used_http_link = await send_file_to_telegram(bot, chat_id, filepath)
+        used_http_link = await send_file_to_telegram(bot, chat_id, filepath, metadata)
 
         await bot.send_message(
             chat_id,
@@ -253,7 +263,7 @@ async def execute_download(bot, task_data: Dict) -> None:
         logger.warning(f'Keeping files in {download_dir} due to failed send')
 
 
-async def send_file_to_telegram(bot, chat_id: int, filepath: str) -> bool:
+async def send_file_to_telegram(bot, chat_id: int, filepath: str, metadata=None) -> bool:
     try:
         from pathlib import Path
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -310,10 +320,13 @@ async def send_file_to_telegram(bot, chat_id: int, filepath: str) -> bool:
         filename = file_path.name
 
         if filepath.endswith('.mp3'):
+            performer = getattr(metadata, 'uploader', None) if metadata else None
+            track_title = file_path.stem
             await bot.send_audio(
                 chat_id,
                 input_file,
-                title=filename,
+                title=track_title,
+                performer=performer,
                 request_timeout=600
             )
         else:

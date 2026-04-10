@@ -134,10 +134,17 @@ class VideoMetadata:
                 continue
 
             title = entry.get('title') or entry.get('track') or entry.get('id') or 'Unknown'
+            uploader = (
+                entry.get('artist')
+                or entry.get('uploader')
+                or entry.get('channel')
+                or 'Unknown'
+            )
             playlist_entries.append({
                 'title': title,
                 'url': entry_url,
                 'duration': entry.get('duration', 0),
+                'uploader': uploader,
             })
 
         return playlist_entries
@@ -172,6 +179,8 @@ class Downloader:
         url: str,
         quality_key: str,
         download_path: str,
+        title_hint: Optional[str] = None,
+        uploader_hint: Optional[str] = None,
         progress_callback=None
     ) -> Optional[str]:
         try:
@@ -209,10 +218,16 @@ class Downloader:
 
             if 'audio' in quality_key:
                 ydl_opts.update({
+                    'writethumbnail': True,
+                    'prefer_ffmpeg': True,
                     'postprocessors': [{
                         'key': 'FFmpegExtractAudio',
                         'preferredcodec': 'mp3',
                         'preferredquality': '192',
+                    }, {
+                        'key': 'FFmpegMetadata',
+                    }, {
+                        'key': 'EmbedThumbnail',
                     }]
                 })
 
@@ -243,10 +258,32 @@ class Downloader:
 
                 if media_files:
                     latest_file = max(media_files, key=lambda p: p.stat().st_mtime)
-                    return str(latest_file)
+                    prepared_path = latest_file
+                else:
+                    logger.error(f'Could not resolve downloaded file path for URL: {url}')
+                    return None
 
-                logger.error(f'Could not resolve downloaded file path for URL: {url}')
-                return None
+                # Normalize final filename to avoid random/opaque names.
+                # Keep extension from the actual downloaded file.
+                raw_title = (info.get('title') if isinstance(info, dict) else None) or title_hint or prepared_path.stem
+                raw_uploader = (info.get('uploader') if isinstance(info, dict) else None) or uploader_hint or ''
+
+                clean_title = ''.join(ch for ch in str(raw_title).strip() if ch not in '<>:"/\\|?*').strip('.') or 'download'
+                clean_uploader = ''.join(ch for ch in str(raw_uploader).strip() if ch not in '<>:"/\\|?*').strip('.')
+
+                if 'audio' in quality_key and clean_uploader:
+                    final_name = f'{clean_uploader} - {clean_title}{prepared_path.suffix}'
+                else:
+                    final_name = f'{clean_title}{prepared_path.suffix}'
+
+                final_path = prepared_path.with_name(final_name)
+                if final_path != prepared_path:
+                    if final_path.exists():
+                        final_path.unlink()
+                    prepared_path.rename(final_path)
+                    prepared_path = final_path
+
+                return str(prepared_path)
 
         except Exception as e:
             logger.error(f'Download failed for {url}: {str(e)}')
