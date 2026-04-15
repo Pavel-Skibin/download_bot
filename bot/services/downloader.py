@@ -214,6 +214,8 @@ class Downloader:
                 'no_warnings': False,
                 'socket_timeout': 30,
                 'merge_output_format': 'mp4',
+                'addmetadata': True,
+                'addchapters': True,
             }
 
             if 'audio' in quality_key:
@@ -226,6 +228,8 @@ class Downloader:
                         'preferredquality': '192',
                     }, {
                         'key': 'FFmpegMetadata',
+                        'add_metadata': True,
+                        'add_chapters': True,
                     }, {
                         'key': 'EmbedThumbnail',
                     }]
