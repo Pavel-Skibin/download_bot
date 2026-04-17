@@ -38,6 +38,9 @@ class DownloadKeyboards:
             for i in range(0, len(video_buttons), 2):
                 row = video_buttons[i:i+2]
                 buttons.append(row)
+            buttons.append([
+                InlineKeyboardButton(text='🧠 Добавить нейроперевод', callback_data='neuro_dub')
+            ])
 
         if audio_buttons:
             if video_buttons:

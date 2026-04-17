@@ -293,6 +293,67 @@ class Downloader:
             logger.error(f'Download failed for {url}: {str(e)}')
             return None
 
+    async def merge_video_with_audio(
+        self,
+        video_path: str,
+        audio_path: str,
+        output_path: Optional[str] = None,
+    ) -> Optional[str]:
+        try:
+            source_video = Path(video_path)
+            source_audio = Path(audio_path)
+
+            if not source_video.exists():
+                logger.error(f'Video file not found: {video_path}')
+                return None
+            if not source_audio.exists():
+                logger.error(f'Audio file not found: {audio_path}')
+                return None
+
+            target_path = Path(output_path) if output_path else source_video.with_name(f'{source_video.stem}_dubbed.mp4')
+            if target_path.exists():
+                target_path.unlink()
+
+            ffmpeg_cmd = [
+                'ffmpeg',
+                '-y',
+                '-i', str(source_video),
+                '-i', str(source_audio),
+                '-map', '0:v:0',
+                '-map', '1:a:0',
+                '-map_metadata', '0',
+                '-map_chapters', '0',
+                '-c:v', 'libx264',
+                '-preset', 'veryfast',
+                '-crf', '20',
+                '-c:a', 'aac',
+                '-b:a', '192k',
+                '-movflags', '+faststart',
+                '-shortest',
+                str(target_path),
+            ]
+
+            logger.info(f'Merging video and audio into {target_path.name}')
+            process = await asyncio.create_subprocess_exec(
+                *ffmpeg_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await process.communicate()
+
+            if process.returncode != 0:
+                error_text = (stderr or b'').decode('utf-8', errors='ignore').strip()
+                if stdout:
+                    logger.debug(stdout.decode('utf-8', errors='ignore').strip())
+                logger.error(f'Failed to merge video and audio: {error_text or "ffmpeg returned non-zero exit code"}')
+                return None
+
+            return str(target_path)
+
+        except Exception as e:
+            logger.error(f'Failed to merge video and audio: {str(e)}')
+            return None
+
     async def get_file_metadata(self, filepath: str) -> dict:
         try:
             file_size = Path(filepath).stat().st_size

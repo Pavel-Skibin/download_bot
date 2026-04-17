@@ -2,6 +2,7 @@ import asyncio
 import html
 import time
 import uuid
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict, Optional
 from aiogram import Router, types, F
@@ -24,6 +25,13 @@ db_logger = DatabaseLogger()
 
 download_queue = {}
 active_downloads = 0
+
+
+def _get_best_video_quality_key(qualities: Dict[str, Dict]) -> Optional[str]:
+    for quality_key in qualities:
+        if quality_key.startswith('video_'):
+            return quality_key
+    return None
 
 
 @router.callback_query((F.data.startswith('download_')) & (F.data != 'download_playlist'))
@@ -69,6 +77,124 @@ async def handle_download_quality(callback: types.CallbackQuery, state: FSMConte
 
     import asyncio
     asyncio.create_task(process_downloads(callback.bot))
+
+
+@router.callback_query(F.data == 'neuro_dub')
+async def handle_neuro_dub(callback: types.CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+
+    data = await state.get_data()
+    url = data.get('selected_url')
+    metadata = data.get('metadata')
+    qualities = data.get('qualities', {})
+
+    if not url or not metadata or not qualities:
+        await callback.message.edit_text('❌ Session expired. Send the link again.')
+        return
+
+    quality_key = _get_best_video_quality_key(qualities)
+    if not quality_key:
+        await callback.message.edit_text('❌ No video quality available for neural dubbing.')
+        return
+
+    await state.update_data(
+        neuro_url=url,
+        neuro_metadata=metadata,
+        neuro_quality_key=quality_key,
+    )
+    await state.set_state(DownloadStates.waiting_for_neuro_audio)
+
+    resolution = qualities.get(quality_key, {}).get('resolution', quality_key)
+    await callback.message.edit_text(
+        f'🧠 Нейроперевод включен.\n\n'
+        f'Видео будет скачано в качестве {resolution}.\n'
+        f'Теперь отправь mp3-аудиодорожку или аудиофайл с новой озвучкой.'
+    )
+
+
+@router.message(DownloadStates.waiting_for_neuro_audio)
+async def handle_neuro_audio_upload(message: types.Message, state: FSMContext) -> None:
+    if message.from_user.id != config.ALLOWED_USER_ID:
+        await message.answer('🚫 Access denied.')
+        return
+
+    audio_source = message.audio or message.document
+    if not audio_source:
+        await message.answer('Пришли mp3-файл как аудио или документ.')
+        return
+
+    file_name = getattr(audio_source, 'file_name', '') or ''
+    mime_type = getattr(audio_source, 'mime_type', '') or ''
+    is_audio_like = mime_type.startswith('audio/') or file_name.lower().endswith(('.mp3', '.m4a', '.aac', '.wav', '.ogg'))
+    if not is_audio_like:
+        await message.answer('Нужен именно аудиофайл, лучше mp3.')
+        return
+
+    data = await state.get_data()
+    url = data.get('neuro_url')
+    metadata = data.get('neuro_metadata')
+    quality_key = data.get('neuro_quality_key')
+
+    if not url or not metadata or not quality_key:
+        await state.clear()
+        await message.answer('❌ Session expired. Send the link again.')
+        return
+
+    await state.clear()
+    await message.answer('⏳ Скачиваю видео и монтирую новую озвучку...')
+
+    user_id = message.from_user.id
+    download_id = f'neuro_{uuid.uuid4().hex}'
+    download_dir = file_manager.get_unique_download_dir(user_id, download_id)
+    start_time = time.time()
+
+    try:
+        audio_path = Path(download_dir) / (file_name or f'{download_id}.mp3')
+        await message.bot.download(audio_source.file_id, destination=audio_path)
+
+        video_path = await downloader.download(
+            url,
+            quality_key,
+            download_dir,
+            title_hint=getattr(metadata, 'title', None),
+            uploader_hint=getattr(metadata, 'uploader', None),
+        )
+        if not video_path:
+            await message.answer('❌ Не удалось скачать исходное видео.')
+            return
+
+        merged_path = await downloader.merge_video_with_audio(video_path, str(audio_path))
+        if not merged_path:
+            await message.answer('❌ Не удалось собрать видео с новой озвучкой.')
+            return
+
+        merged_info = await downloader.get_file_metadata(merged_path)
+        await message.answer('⬆️ Отправляю готовое видео...')
+
+        used_http_link = await send_file_to_telegram(message.bot, message.chat.id, merged_path, metadata)
+        total_time = time.time() - start_time
+
+        await message.answer(
+            f'''✅ Готово!\n📹 {getattr(metadata, "title", "Видео")}\n📦 Size: {merged_info.get("file_size", 0) / (1024 * 1024):.1f} MB\n⏱ Processed in: {total_time:.0f} seconds'''
+        )
+
+        await db_logger.log_download(
+            user_id,
+            url,
+            getattr(metadata, 'title', 'Video'),
+            'youtube_neuro_dub',
+            f'Neural Dub ({quality_key})',
+            merged_info.get('file_size', 0),
+            getattr(metadata, 'duration', 0),
+            total_time,
+        )
+
+        if config.CLEANUP_AFTER_SEND and not used_http_link:
+            await file_manager.cleanup_download_dir(download_dir)
+
+    except Exception as e:
+        logger.error(f'Neural dubbing failed: {str(e)}')
+        await message.answer(f'❌ Ошибка обработки: {str(e)[:120]}')
 
 
 @router.callback_query(F.data == 'cancel_download')
@@ -316,12 +442,12 @@ async def send_file_to_telegram(bot, chat_id: int, filepath: str, metadata=None)
             logger.info(f'Download link sent: {file_hash}')
             return True
 
-        input_file = FSInputFile(filepath)
         filename = file_path.name
 
         if filepath.endswith('.mp3'):
             performer = getattr(metadata, 'uploader', None) if metadata else None
             track_title = file_path.stem
+            input_file = FSInputFile(filepath)
             await bot.send_audio(
                 chat_id,
                 input_file,
@@ -329,7 +455,26 @@ async def send_file_to_telegram(bot, chat_id: int, filepath: str, metadata=None)
                 performer=performer,
                 request_timeout=600
             )
+        elif filepath.endswith('.mp4'):
+            try:
+                input_file = FSInputFile(filepath)
+                await bot.send_video(
+                    chat_id,
+                    input_file,
+                    caption=filename,
+                    supports_streaming=True,
+                    request_timeout=600
+                )
+            except Exception:
+                input_file = FSInputFile(filepath)
+                await bot.send_document(
+                    chat_id,
+                    input_file,
+                    caption=filename,
+                    request_timeout=600
+                )
         else:
+            input_file = FSInputFile(filepath)
             await bot.send_document(
                 chat_id,
                 input_file,
