@@ -227,12 +227,18 @@ class Downloader:
                         'preferredcodec': 'mp3',
                         'preferredquality': '192',
                     }, {
+                        'key': 'FFmpegThumbnailsConvertor',
+                        'format': 'jpg',
+                    }, {
                         'key': 'FFmpegMetadata',
                         'add_metadata': True,
                         'add_chapters': True,
                     }, {
                         'key': 'EmbedThumbnail',
-                    }]
+                    }],
+                    'postprocessor_args': [
+                        '-id3v2_version', '3',
+                    ],
                 })
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
