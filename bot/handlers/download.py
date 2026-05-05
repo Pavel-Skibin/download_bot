@@ -448,13 +448,24 @@ async def send_file_to_telegram(bot, chat_id: int, filepath: str, metadata=None)
             performer = getattr(metadata, 'uploader', None) if metadata else None
             track_title = file_path.stem
             input_file = FSInputFile(filepath)
-            await bot.send_audio(
-                chat_id,
-                input_file,
-                title=track_title,
-                performer=performer,
-                request_timeout=600
-            )
+            # Надо
+            if filepath.endswith('.mp3'):
+                performer = getattr(metadata, 'uploader', None) if metadata else None
+                track_title = file_path.stem
+                input_file = FSInputFile(filepath)
+
+                # Ищем thumbnail рядом с файлом
+                thumbnail_path = file_path.with_suffix('.jpg')
+                thumbnail = FSInputFile(str(thumbnail_path)) if thumbnail_path.exists() else None
+
+                await bot.send_audio(
+                    chat_id,
+                    input_file,
+                    title=track_title,
+                    performer=performer,
+                    thumbnail=thumbnail,
+                    request_timeout=600
+                )
         elif filepath.endswith('.mp4'):
             try:
                 input_file = FSInputFile(filepath)
