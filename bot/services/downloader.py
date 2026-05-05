@@ -222,23 +222,28 @@ class Downloader:
                 ydl_opts.update({
                     'writethumbnail': True,
                     'prefer_ffmpeg': True,
-                    'postprocessors': [{
-                        'key': 'FFmpegExtractAudio',
-                        'preferredcodec': 'mp3',
-                        'preferredquality': '192',
-                    }, {
-                        'key': 'FFmpegThumbnailsConvertor',
-                        'format': 'jpg',
-                    }, {
-                        'key': 'FFmpegMetadata',
-                        'add_metadata': True,
-                        'add_chapters': True,
-                    }, {
-                        'key': 'EmbedThumbnail',
-                    }],
-                    'postprocessor_args': [
-                        '-id3v2_version', '3',
+                    'postprocessors': [
+                        {
+                            'key': 'FFmpegExtractAudio',
+                            'preferredcodec': 'mp3',
+                            'preferredquality': '192',
+                        },
+                        {
+                            'key': 'FFmpegMetadata',
+                            'add_metadata': True,
+                            'add_chapters': True,
+                        },
+                        {
+                            'key': 'FFmpegThumbnailsConvertor',  # конвертируем ДО embed
+                            'format': 'jpg',
+                        },
+                        {
+                            'key': 'EmbedThumbnail',  # embed последним
+                        },
                     ],
+                    'postprocessor_args': {
+                        'ffmpegextractaudio': ['-id3v2_version', '3'],  # явно указываем цель
+                    },
                 })
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
